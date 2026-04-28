@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diagram-tour"
+version = "1.0.0"
+description = "Turn any codebase into a narrated architecture-tour video"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Maurice Wingfield"}]
+requires-python = ">=3.10"
+dependencies = [
+    "Pillow",
+    "PyYAML",
+    "piper-tts",
+    "pathvalidate",
+]
+
+[project.scripts]
+diagram-tour = "diagram_tour.render_video:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["diagram_tour*"]

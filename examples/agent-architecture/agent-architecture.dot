@@ -1,0 +1,86 @@
+digraph AgentArchitecture {
+  rankdir=LR;
+  fontname="Helvetica";
+  node [fontname="Helvetica", shape=box, style="rounded,filled", fillcolor="#f5f5f5", color="#333333"];
+  edge [fontname="Helvetica", fontsize=10, color="#555555"];
+  graph [fontname="Helvetica", fontsize=11, labeljust="l"];
+
+  // ─── External boundary ──────────────────────────────
+  subgraph cluster_external {
+    label="External";
+    style="filled"; color="#fef3c7";
+    user        [label="User\nchat surface · CLI · API",  fillcolor="#fde68a"];
+    modelApi    [label="Anthropic API\nClaude · tool use · streaming", fillcolor="#fde68a"];
+    mcpServers  [label="MCP Servers\nexternal tools via\nModel Context Protocol", fillcolor="#fde68a"];
+  }
+
+  // ─── Agent core ─────────────────────────────────────
+  subgraph cluster_core {
+    label="Agent Core";
+    style="filled"; color="#dbeafe";
+    orchestrator      [label="orchestrator\nthe agent loop\nrequest → tools → response",
+                       shape=diamond, fillcolor="#bfdbfe"];
+    contextBuilder    [label="context builder\nsystem prompt +\nhistory + retrieved facts",
+                       fillcolor="#bfdbfe"];
+    toolRouter        [label="tool router\nparse + dispatch\nparallel tool calls",
+                       fillcolor="#bfdbfe"];
+    responseComposer  [label="response composer\nstream tokens · format\ncitations · output",
+                       fillcolor="#bfdbfe"];
+  }
+
+  // ─── Tools (built-in) ───────────────────────────────
+  subgraph cluster_tools {
+    label="Tools";
+    style="filled"; color="#dcfce7";
+    bashTool   [label="bash\nshell commands\nbackground processes", fillcolor="#bbf7d0"];
+    fileTool   [label="file ops\nread · write · edit\nglob · grep",     fillcolor="#bbf7d0"];
+    webTool    [label="web fetch\nHTTP · search\ndoc retrieval",       fillcolor="#bbf7d0"];
+  }
+
+  // ─── Memory layers ──────────────────────────────────
+  subgraph cluster_memory {
+    label="Memory";
+    style="filled"; color="#fce7f3";
+    workingContext    [label="working context\nturn-scoped\nfits in context window", fillcolor="#fbcfe8"];
+    sessionMemory     [label="session memory\nconversation-scoped\nsummaries · pinned facts",  fillcolor="#fbcfe8"];
+    persistentMemory  [label="persistent memory\nfile-backed\nuser profile · preferences",     fillcolor="#fbcfe8"];
+  }
+
+  // ─── User → orchestrator ────────────────────────────
+  user -> orchestrator             [label="prompt"];
+  responseComposer -> user         [label="streamed reply"];
+
+  // ─── Orchestrator builds context ────────────────────
+  orchestrator -> contextBuilder   [label="build"];
+  contextBuilder -> workingContext [label="read", style=dashed];
+  contextBuilder -> sessionMemory  [label="read", style=dashed];
+  contextBuilder -> persistentMemory [label="read", style=dashed];
+  contextBuilder -> orchestrator   [label="return context"];
+
+  // ─── Orchestrator calls model ───────────────────────
+  // taillabel positions each label near its origin (the source end of the
+  // arrow), keeping the two labels on this bidirectional pair from
+  // overlapping at the midpoint.
+  orchestrator -> modelApi         [taillabel="messages.create", labeldistance=2];
+  modelApi -> orchestrator         [taillabel="response w/ tool_use", labeldistance=2];
+
+  // ─── Tool dispatch ──────────────────────────────────
+  orchestrator -> toolRouter       [taillabel="tool_use", labeldistance=2];
+  toolRouter -> bashTool;
+  toolRouter -> fileTool;
+  toolRouter -> webTool;
+  toolRouter -> mcpServers         [label="MCP RPC", style=dashed];
+  bashTool -> toolRouter           [label="result", style=dashed];
+  fileTool -> toolRouter           [label="result", style=dashed];
+  webTool  -> toolRouter           [label="result", style=dashed];
+  mcpServers -> toolRouter         [label="result", style=dashed];
+  toolRouter -> orchestrator       [taillabel="tool_result", labeldistance=2];
+
+  // ─── Memory writes after the turn ───────────────────
+  orchestrator -> workingContext    [label="append turn", style=dashed];
+  orchestrator -> sessionMemory     [label="append summary", style=dashed];
+  orchestrator -> persistentMemory  [label="persist (conditional)", style=dashed];
+
+  // ─── Final output ───────────────────────────────────
+  orchestrator -> responseComposer  [label="final"];
+}
