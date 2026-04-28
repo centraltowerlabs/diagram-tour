@@ -26,7 +26,7 @@ You confirm the scope, the diagram, and the narration before any 15-minute rende
 Clone into your Claude Code skills directory and run the installer:
 
 ```bash
-git clone https://github.com/<user>/diagram-tour ~/.claude/skills/diagram-tour
+git clone https://github.com/centraltowerlabs/diagram-tour ~/.claude/skills/diagram-tour
 ~/.claude/skills/diagram-tour/install.sh
 ```
 
@@ -61,14 +61,14 @@ If you'd rather drive the pipeline directly with an existing `.dot` file and nar
 
 ```bash
 ~/.claude/skills/diagram-tour/.venv/bin/diagram-tour \
-    --dot path/to/architecture.dot
+    --dot path/to/diagram.dot
 ```
 
 …or with a non-default voice:
 
 ```bash
 ~/.claude/skills/diagram-tour/.venv/bin/diagram-tour \
-    --dot path/to/architecture.dot --voice en_US-ryan-high
+    --dot path/to/diagram.dot --voice en_US-ryan-high
 ```
 
 (The `python -m diagram_tour` form works too — same entry point.)
@@ -81,15 +81,17 @@ Light scan only — `README.md`, `package.json` / `pyproject.toml` / `Cargo.toml
 
 ### 2. `.dot` review gate
 
-Once scope is confirmed, the skill samples key files and writes `.diagram-tour/architecture.dot`. A preview PNG is rendered and shown. You can:
+Once scope is confirmed, the skill picks a kebab-case **stem** for the tour (derived from your prompt — e.g. `architecture` for "explain this codebase", `api` for "explain how the API works") and writes `.diagram-tour/<stem>.dot`. A preview PNG is rendered and shown. You can:
 
 - **Approve** and continue to narration
 - **Refine** in plain English: *"make it simpler"*, *"split the lib cluster"*, *"show data flow not file dependencies"*, *"focus on the API surface"*
-- **Edit directly** by opening `.diagram-tour/architecture.dot` in your editor
+- **Edit directly** by opening `.diagram-tour/<stem>.dot` in your editor
+
+Multiple tours coexist in the same project — each gets its own stem, so `api.dot` and `data-flow.dot` don't collide.
 
 ### 3. Narration review gate
 
-The skill reads source files referenced by node names and writes `.diagram-tour/architecture-tour.md` following the [narration conventions](./CONVENTIONS.md). You can approve, refine, or edit.
+The skill reads source files referenced by node names and writes `.diagram-tour/<stem>-tour.md` following the [narration conventions](./CONVENTIONS.md). You can approve, refine, or edit.
 
 ### 4. Render
 
@@ -150,14 +152,16 @@ The skill keeps a `.diagram-tour/` directory at your project root (located via `
 
 ```
 .diagram-tour/
-├── architecture.dot                      cached, user-approved
-├── architecture-tour.md                  cached, user-approved
-├── architecture-hires-raw.png            graphviz output
-├── architecture-hires.png                16:9-padded canvas (used by ffmpeg)
-├── architecture.layout.json              cluster + node positions
+├── <stem>.dot                            cached, user-approved
+├── <stem>-tour.md                        cached, user-approved
+├── <stem>-hires-raw.png                  graphviz output
+├── <stem>-hires.png                      16:9-padded canvas (used by ffmpeg)
+├── <stem>.layout.json                    cluster + node positions
 ├── voice-cache/<hash>.wav                per-sentence Piper output, content-addressable
-└── renders/<diagram>-tour-<ts>.mp4       all versioned MP4 outputs
+└── renders/<stem>-tour-<ts>.mp4          all versioned MP4 outputs
 ```
+
+`<stem>` is the per-tour kebab-case key (e.g. `architecture`, `api`, `data-flow`). Multiple tours of the same project coexist in this directory under different stems.
 
 **The voice cache is the iteration win.** Per-sentence WAVs are keyed by `sha256(voice | length_scale | sentence_text)`. Edit one paragraph in your narration, re-render, and only the changed sentences re-TTS. ~5-min iteration loop instead of ~30 min.
 

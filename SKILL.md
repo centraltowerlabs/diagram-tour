@@ -7,7 +7,30 @@ description: Generate a narrated architecture-tour video from a codebase. End-to
 
 You are operating as the diagram-tour skill. Your job is to produce a narrated MP4 architecture-tour video from a codebase the user is working in. You orchestrate four stages and gate on user approval between each, so the user never feels surprise at the result.
 
-## Before anything else: confirm scope and cost
+## Before anything else: pick a tour stem, confirm scope and cost
+
+### Tour stem
+
+Every tour is keyed by a short kebab-case **stem** that names the focus of the tour. The stem becomes the filename prefix for every artifact: `<stem>.dot`, `<stem>-tour.md`, `<stem>-hires.png`, `<stem>.layout.json`, and the rendered `<stem>-tour-<timestamp>.mp4`. Distinct stems coexist in the same `.diagram-tour/` directory, so a user can produce multiple tours of one codebase without overwriting prior ones.
+
+Derive the stem from what the user asked:
+
+| Prompt | Stem |
+|---|---|
+| `/diagram-tour explain this codebase` (or any whole-codebase ask) | `architecture` |
+| `/diagram-tour explain how the API works` | `api` |
+| `/diagram-tour show the data pipeline` | `data-pipeline` |
+| `/diagram-tour walk through the build system` | `build-system` |
+| `/diagram-tour tour the worker internals` | `worker` |
+
+Rules:
+- Lowercase, kebab-case, 1-3 words, no punctuation.
+- Default to `architecture` only for whole-codebase asks; pick something specific otherwise.
+- If `.diagram-tour/<stem>.dot` already exists, **ask the user** whether to overwrite, refine the existing one, or pick a different stem. Do not silently overwrite.
+
+State the chosen stem in your scope-confirmation message so the user can correct it if the inferred name doesn't fit.
+
+### Scope and cost
 
 Render time is non-trivial — roughly 15-30 min on modern hardware, longer on lighter machines, and proportional to diagram size. The user must opt in *before* you start.
 
@@ -15,15 +38,17 @@ Open with a single message that:
 
 1. Restates what you're about to do, in one sentence.
 2. Names the working directory (or repo root, if detected via `.git`/`pyproject.toml`/`package.json` walk-up from the user's cwd).
-3. Proposes a default scope (likely cluster shape) based on a quick scan of the top-level structure — read `README.md`, `package.json` or `pyproject.toml`, and `ls` the top-level `src/` directory. **Do not** read source files yet; that comes later.
-4. Names the expected output: `<project>/.diagram-tour/renders/<dot-stem>-tour-<timestamp>.mp4`.
-5. Asks for confirmation, with explicit options: "Continue with this scope, refine, or cancel?"
+3. Names the **tour stem** you've chosen.
+4. Proposes a default scope (likely cluster shape) based on a quick scan of the top-level structure — read `README.md`, `package.json` or `pyproject.toml`, and `ls` the top-level `src/` directory. **Do not** read source files yet; that comes later.
+5. Names the expected output: `<project>/.diagram-tour/renders/<stem>-tour-<timestamp>.mp4`.
+6. Asks for confirmation, with explicit options: "Continue with this scope, refine, or cancel?"
 
 Example opening (adapt to the codebase):
 
 > I'll analyze this codebase, generate an architecture diagram, write narration, and render a narrated MP4 tour.
 >
 > **Detected**: Next.js + Prisma + BullMQ portal at `/path/to/repo`.
+> **Tour stem**: `architecture` (whole codebase). Will write `.diagram-tour/architecture.dot`.
 > **Best guess at scope**: cluster by top-level `src/` directories — `worker`, `lib`, `app`, `actions`, `components`. Plus a Prisma models cluster. Roughly 12-18 nodes across 5-6 clusters.
 > **Estimated runtime**: 15-30 min on modern hardware, longer on lighter machines.
 > **Output**: `.diagram-tour/renders/architecture-tour-<timestamp>.mp4`.
@@ -44,7 +69,7 @@ Once the user confirms, scan the codebase:
 - Sample a few entry-point files (e.g. `src/index.ts`, `src/main.py`, the file `package.json` "main" points at).
 - Skim — don't read everything. Goal is to pick the right cluster boundaries, not understand every line.
 
-Then write `<project>/.diagram-tour/architecture.dot`. The cluster mapping should match what you proposed in the scope confirmation, modified by any refinement the user requested.
+Then write `<project>/.diagram-tour/<stem>.dot` (using the stem chosen in the scope-confirmation step). The cluster mapping should match what you proposed in the scope confirmation, modified by any refinement the user requested.
 
 Conventions for the `.dot`:
 - One cluster per major architectural concern (worker, lib, UI, DB, etc.).
@@ -60,16 +85,16 @@ Conventions for the `.dot`:
 Render a preview PNG so the user can see what they'll be touring:
 
 ```bash
-python -m diagram_tour analyze --dot .diagram-tour/architecture.dot --preview-only
+python -m diagram_tour analyze --dot .diagram-tour/<stem>.dot --preview-only
 ```
 
-(Or if `analyze` isn't a separate operation yet, render manually with `dot -Tpng -Gdpi=120 .diagram-tour/architecture.dot -o .diagram-tour/architecture-preview.png`.)
+(Or if `analyze` isn't a separate operation yet, render manually with `dot -Tpng -Gdpi=120 .diagram-tour/<stem>.dot -o .diagram-tour/<stem>-preview.png`.)
 
 Then present:
 
 > Here's the diagram I generated. [Show a brief textual summary: N clusters, M nodes, key edges.]
 >
-> Approve and continue to narration, refine, or edit `.diagram-tour/architecture.dot` directly?
+> Approve and continue to narration, refine, or edit `.diagram-tour/<stem>.dot` directly?
 
 Common refinement requests and how to handle them:
 
@@ -87,7 +112,7 @@ Re-render the preview after each refinement. **Don't proceed to narration until 
 
 Now read the source files referenced by node names. You're writing prose — accuracy matters.
 
-Write `<project>/.diagram-tour/architecture-tour.md` following `CONVENTIONS.md` strictly:
+Write `<project>/.diagram-tour/<stem>-tour.md` following `CONVENTIONS.md` strictly:
 
 - **YAML frontmatter** declaring the stop-cluster mapping.
 - **One stop per cluster** plus an Orientation stop (Stop 1, FULL) and a Closing stop (final, FULL).
@@ -114,7 +139,7 @@ After writing all stops, present the markdown to the user:
 
 > Here's the narration script. [Brief summary: N stops, ~M words total, ~K min spoken at standard pacing.]
 >
-> Approve and render, refine, or edit `.diagram-tour/architecture-tour.md` directly?
+> Approve and render, refine, or edit `.diagram-tour/<stem>-tour.md` directly?
 
 Common refinements:
 - "Sounds too academic" / "more conversational" — rewrite with shorter sentences and active voice
@@ -127,9 +152,9 @@ Common refinements:
 Invoke the pipeline:
 
 ```bash
-python -m diagram_tour --dot .diagram-tour/architecture.dot
+python -m diagram_tour --dot .diagram-tour/<stem>.dot
 # or with a non-default voice:
-python -m diagram_tour --dot .diagram-tour/architecture.dot --voice en_US-ryan-high
+python -m diagram_tour --dot .diagram-tour/<stem>.dot --voice en_US-ryan-high
 ```
 
 Tell the user:
@@ -138,21 +163,21 @@ Tell the user:
 
 You can run the command in the background and continue handling other user requests. When complete, report:
 
-> ✓ Done: `.diagram-tour/renders/architecture-tour-<timestamp>.mp4` (Y minutes long)
+> ✓ Done: `.diagram-tour/renders/<stem>-tour-<timestamp>.mp4` (Y minutes long)
 >
-> The latest symlink at `.diagram-tour/architecture-tour-latest.mp4` points at this render. Open it to evaluate.
+> The latest symlink at `.diagram-tour/<stem>-tour-latest.mp4` points at this render. Open it to evaluate.
 
 ## Cache behavior
 
 The `.diagram-tour/` workspace at the project root caches expensive intermediates:
 
-- `architecture.dot` and `architecture-tour.md` persist between runs — re-runs without changes skip stages 1-3.
-- `architecture-hires.png` and `architecture.layout.json` are regenerated only when `architecture.dot` is newer.
-- `voice-cache/<hash>.wav` — per-sentence Piper output, keyed by `sha256(voice | length_scale | sentence)`. Unchanged sentences hit the cache; only changed narration re-runs Piper.
+- `<stem>.dot` and `<stem>-tour.md` persist between runs — re-runs against the same stem without changes skip stages 1-3.
+- `<stem>-hires.png` and `<stem>.layout.json` are regenerated only when `<stem>.dot` is newer.
+- `voice-cache/<hash>.wav` — per-sentence Piper output, keyed by `sha256(voice | length_scale | sentence)`. Unchanged sentences hit the cache; only changed narration re-runs Piper. Voice cache is shared across all stems in the project.
 
 **Cache scope**: per-project, content-addressable. The cache lives at the project root (located via `.git`/`pyproject.toml`/`package.json` walk-up from the `.dot` file) and is shared across all diagrams in that project. Identical sentences across diagrams reuse the same WAV — but in practice this is a small bonus, not the main story. Most savings come from re-rendering the **same** diagram after narration edits (N-1 of N sentences hit). Different diagrams in one repo (data flow vs. deployment vs. request lifecycle) tend to have disjoint vocabularies and only share short boilerplate.
 
-**Iteration impact**: edit one paragraph in `architecture-tour.md`, re-run the render, and only the changed sentences re-TTS. ~5-min iteration loop instead of ~30 min for a full rebuild. This is the main efficiency win and the reason the cache layer exists.
+**Iteration impact**: edit one paragraph in `<stem>-tour.md`, re-run the render, and only the changed sentences re-TTS. ~5-min iteration loop instead of ~30 min for a full rebuild. This is the main efficiency win and the reason the cache layer exists.
 
 When telling the user about cache behavior, lead with the iteration win, not the cross-diagram dedup. The latter is mostly an implementation detail.
 
